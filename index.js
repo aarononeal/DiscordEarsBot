@@ -286,26 +286,40 @@ function speak_impl(voice_Connection, mapKey) {
       console.log('audioStream: ' + e)
     });
     let buffer = [];
-    let bufferLength = 0;
+    // let bufferLength = 0;
     audioStream.on('data', async (data) => {
-      const duration = (bufferLength + data.length) / 48000 / 4;
-      if (bufferLength > 0 && duration > 19) {
-        await process_buffer(mapKey, user, buffer);
-        bufferLength = 0;
-        buffer = [];
-      }
+      // const duration = (bufferLength + data.length) / 48000 / 4;
+      // if (bufferLength > 0 && duration > 19) {
+      //   if (Array.isArray(buffer)) {
+      //     buffer = Buffer.concat(buffer);
+      //   }
+      //   await process_buffer(mapKey, user, buffer);
+      //   bufferLength = 0;
+      //   buffer = [];
+      // }
       buffer.push(data)
-      bufferLength += data.length;
+      // bufferLength += data.length;
     })
     audioStream.on('end', async () => {
-      buffer = Buffer.concat(buffer)
-      await process_buffer(mapKey, user, buffer);
+      buffer = Buffer.concat(buffer);
+
+      const duration = buffer.length / 48000 / 4;
+      let slices = (duration % 19) + 1;
+      for (i = 0; i < slices; ++i) {
+        const start = i * 19 * 48000 * 4;
+        const end = Math.min(start + 19 * 48000 * 4, buffer.length - 1);
+        await process_buffer(mapKey, user, buffer.subarray(start, end));
+      }
     })
   })
 }
 
 async function process_buffer(mapKey, user, buffer) {
   const duration = buffer.length / 48000 / 4;
+  if (duration == 0) {
+    return;
+  }
+
   console.log("duration: " + duration)
 
   if (duration > 19) { // 20 seconds max dur
@@ -313,10 +327,17 @@ async function process_buffer(mapKey, user, buffer) {
     return;
   }
 
-  if (duration < 1.0) { // 20 seconds max dur
+  if (duration < 0.25) {
+    console.log("TOO SHORT; NOT PADDING")
+    return;
+  }
+
+  if (duration < 1.0) {
     console.log("TOO SHORT; PADDING")
-    const padding = new Uint8Array(48000 * 4 - buffer.length).fill(0);
-    buffer = Buffer.concat([buffer, padding]);
+    const padded_buffer = new Uint8Array(48000 * 4);
+    padded_buffer.set(buffer);
+    padded_buffer.fill(buffer.length, 48000 * 4 - buffer.length);
+    buffer = padded_buffer;
   }
 
   try {
@@ -348,8 +369,8 @@ function process_commands_query(txt, mapKey, user) {
 //////////////////////////////////////////
 async function transcribe(buffer) {
 
-  return transcribe_witai(buffer)
-  // return transcribe_gspeech(buffer)
+  // return transcribe_witai(buffer)
+  return transcribe_gspeech(buffer)
 }
 
 // WitAI
